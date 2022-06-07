@@ -1,0 +1,397 @@
+library(reshape2)
+library(tidyverse)
+library(bootstrap)
+library(QuantPsyc)  #姝ゅ寘涔熷彲浠ヨ緭鍑烘爣鍑嗗寲鐨勫洖褰掔郴鏁? lm.beta(lm_chap)
+library(relaimpo)
+library(psych)
+library(ggplot2)
+#remove spatial autocorrelation
+library(nlme)
+library(ape)
+library(MuMIn)
+library(ggstatsplot)
+library(rsq)
+library(extrafont)
+library(car)
+library(bfast)
+library(remotes)
+library(zoo)
+library(tidyverse)
+library(mblm)
+library(reshape2)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+windowsFonts(Arial = windowsFont("Arial"))
+stderr <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+library(extrafont)
+windowsFonts(Times=windowsFont("TT Arial"))
+setwd("D:\\ET\\Figures\\LAI_Figures\\CRU_CV")
+Pre <-read.table("pre_cru_basin3.csv",header=T, na.strings = "NA", sep=",")
+Pet <-read.table("pet_cru_basin3.csv",header=T, na.strings = "NA", sep=",")
+####################moving average
+PRE = as.matrix(Pre[,3:40])
+PET = as.matrix(Pet[,3:40])
+climate_index = t(PRE/PET)
+CV = function(x){
+  mean = mean(x)
+  sd = sd(x)
+  cv = sd/mean
+  return(cv)
+}
+cv_climate_index = apply(climate_index, 2, CV)
+ID = Pre[,2]
+cv_climate_index = cbind(ID,cv_climate_index)
+write.table(cv_climate_index,"cv_climate_index.csv", sep=",")
+#####################33
+setwd("D:\\ET\\Figures\\LAI_Figures")
+cv_CI <-read.table("CV_CI.csv",header=T, na.strings = "NA", sep=",")
+cv_LAI <-read.table("CV_LAI.csv",header=T, na.strings = "NA", sep=",")
+mkr_wp_lai = read.table("MK_R_LAI_WP.csv",header=T, na.strings = "NA", sep=",")
+lai_trend = read.table("LAI_trend_basins_3.csv",header=T, na.strings = "NA", sep=",")
+all1 = merge(cv_CI,cv_LAI)
+all2 = merge(all1,mkr_wp_lai)
+all3 = merge(all2,lai_trend)
+all = na.omit(all3)
+write.table(all,"all.csv", sep=",")
+##################
+ApplyQuintiles <- function(x) {
+  cut(x, breaks=c(quantile(all$LAI_trend, probs = seq(0, 1, by = 0.25))), 
+      labels=c("1","2","3","4"), include.lowest=TRUE)
+}
+all$LAI_trend_quantile <- sapply(all$LAI_trend, ApplyQuintiles)
+####################
+setwd("D:\\ET\\Figures\\LAI_Figures\\WP_LAI")
+LAI <-read.table("LAI_yearly_merge.csv",header=T, na.strings = "NA", sep=",")
+####################moving average
+Lai = as.matrix(LAI)
+CV = function(x){
+  mean = mean(x)
+  sd = sd(x)
+  cv = sd/mean
+  return(cv)
+}
+cv_Lai = apply(Lai[,2:39], 1, CV)
+ID = Lai[,1]
+cv_Lai = cbind(ID,cv_Lai)
+write.table(cv_Lai,"cv_Lai.csv", sep=",")
+#####################33
+LAI <-read.table("LAI_yearly_merge.csv",header=T, na.strings = "NA", sep=",")
+Pre <-read.table("pre_cru_basin3.csv",header=T, na.strings = "NA", sep=",")
+Pet <-read.table("pet_cru_basin3.csv",header=T, na.strings = "NA", sep=",")
+et = read.table("et_climate_yearly_essd_1982_2019.csv",header=T, na.strings = "NA", sep=",")
+############trend analysis
+library(trend)
+trend = function(x){
+  x = as.numeric (x)
+  social = sens.slope(x)
+  slope = social$estimates
+  pvalue = social$p.value
+  all = cbind(slope,pvalue)
+  return(all)
+}
+LAI = na.omit(LAI)
+trend_Lai = apply(LAI[,2:39], 1, trend)
+ID = LAI[,1]
+trend_Lai = rbind(ID,trend_Lai)
+write.table(trend_Lai,"trend_Lai.csv", sep=",")
+
+WP = (Pre-et)/Pre
+ID = Pre[,1]
+WP = cbind(ID,WP[,2:39])
+WP = na.omit(WP)
+trend_WP = apply(WP[,2:39], 1, trend)
+ID = WP[,1]
+trend_WP = rbind(ID,trend_WP)
+write.table(trend_WP,"trend_WP.csv", sep=",")
+
+###################
+library(tidyverse)
+library(zoo)
+LAi = as.data.frame(t(LAI))
+year = seq(1982,2020)
+LAi = cbind(year,LAi)
+moving_average = function(x){
+  moving_mean = zoo::rollmean(x,k=5)
+  return(moving_mean)
+}
+ma_Lai = apply(LAI[,2:39], 1, moving_average)
+###################
+ma_Pre = apply(Pre[,2:39], 1, moving_average)
+ma_et = apply(et[,2:39], 1, moving_average)
+WP = (ma_Pre-ma_et)/ma_Pre
+WP = WP[,2:39]
+###########################################
+##################################3
+##############################True data and models values correlation compare
+library(xts)
+library(lubridate)
+library(ggstatsplot)
+library(rsq)
+library(extrafont)
+library(car)
+library(bfast)
+library(remotes)
+library(ggpmisc)
+library(dplyr)
+library(lubridate)
+library(mice)
+library(VIM)
+setwd("D:\\ET\\Figures\\True_basins\\验证")
+AET <-read.table("AET_Zhi.csv",header=T, na.strings = "NA", sep=",")
+ET <-read.table("et_climate_yearly_essd_1982_2019_global_basins.csv",header=T, na.strings = "NA", sep=",")
+all = merge(AET,ET,by = "Name")
+id = all[,1]
+aet = as.matrix(all[,2:28])
+et = as.matrix(all[,29:55])
+aet = c(aet)
+et = c(et)
+
+all1 = cbind(aet,et)
+all1 = na.omit(all1)
+all1 = as.data.frame(all1[as.data.frame(all1)$aet > 0 ,])
+all1$et = all1$et*10
+
+library(wesanderson)
+ggplot(all1, aes(x=aet,y=et) ) +
+  geom_bin2d(bins=50) +
+  geom_smooth(method = "lm", se=T, color = "blue",linetype = "dashed",size=2,formula = y~x) +
+  stat_poly_eq(formula = y~x, 
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               parse = TRUE)  +
+  scale_fill_continuous(type = "viridis") +
+  theme_bw()+theme(axis.title=element_text(size=16,face="bold"),
+                   axis.text =element_text(size=15, face="bold"),
+                   panel.background=element_rect(colour="black",fill=NA),
+                   panel.grid.minor=element_blank(),
+                   text=element_text(size=15,face="bold"),
+                   legend.position="right",
+                   legend.background=element_rect(colour=NA,fill=NA),
+                   axis.ticks=element_line(colour="black"))+ 
+  xlab("AET True")+ylab("AET Models")
+################################################
+library(reshape2)
+library(tidyverse)
+library(bootstrap)
+library(QuantPsyc)  #姝ゅ寘涔熷彲浠ヨ緭鍑烘爣鍑嗗寲鐨勫洖褰掔郴鏁? lm.beta(lm_chap)
+library(relaimpo)
+library(psych)
+library(ggplot2)
+library(nlme)
+library(ape)
+library(MuMIn)
+library(ggstatsplot)
+library(rsq)
+library(extrafont)
+library(car)
+library(bfast)
+library(remotes)
+library(zoo)
+library(tidyverse)
+library(mblm)
+library(reshape2)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+library(extrafont)
+windowsFonts(Times=windowsFont("TT Arial"))
+setwd("D:\\ET\\Figures\\LAI_Figures\\WP_LAI")
+LAI <-read.table("LAI_yearly_merge.csv",header=T, na.strings = "NA", sep=",")
+Pre <-read.table("pre_cru_basin3.csv",header=T, na.strings = "NA", sep=",")
+et = read.table("et_climate_yearly_essd_1982_2019.csv",header=T, na.strings = "NA", sep=",")
+####################moving average
+library(tidyverse)
+library(zoo)
+Lai = as.data.frame(t(LAI))
+PRE = as.data.frame(t(Pre))
+ET = as.data.frame(t(et))
+moving_average = function(x){
+  moving_mean = zoo::rollmean(x,k=3,align = c("left"))
+  return(moving_mean)
+}
+ma_Lai = apply(Lai[2:39,], 2, moving_average)
+ma_PRE = apply(PRE[2:39,], 2, moving_average)
+ma_ET = apply(ET[2:39,], 2, moving_average)
+
+write.table(ma_Lai,"ma_Lai.csv", sep=",")
+write.table(ma_PRE,"ma_PRE.csv", sep=",")
+write.table(ma_ET,"ma_ET.csv", sep=",")
+#############################################
+LAI <-read.table("ma_Lai.csv",header=T, na.strings = "NA", sep=",")
+Pre <-read.table("ma_Pre.csv",header=T, na.strings = "NA", sep=",")
+et = read.table("ma_ET.csv",header=T, na.strings = "NA", sep=",")
+WY = (Pre-et)/Pre
+##############correlation
+R_LAI_ET = {}
+for(i in 1:293){    
+  coR = cor(LAI[,i], et[,i])    
+  R_LAI_ET = cbind(R_LAI_ET,coR)
+  }
+
+R_LAI_WY = {}
+for(i in 1:293){    
+  coR = cor(LAI[,i], WY[,i])    
+  R_LAI_WY = cbind(R_LAI_WY,coR)
+}
+boxplot(R_LAI_WY)
+write.table(R_LAI_ET,"R_LAI_ET.csv", sep=",")
+write.table(R_LAI_WY,"R_LAI_WY.csv", sep=",")
+############################################
+Delta = {}
+for(i in 1:293){    
+  dt_sub = as.data.frame(cbind(LAI[,i], WY[,i])) 
+  colnames(dt_sub) = c("LAI","WP")
+  max = dt_sub[as.numeric(order(dt_sub$LAI)[1]),]
+  min = dt_sub[as.numeric(order(dt_sub$LAI,decreasing =T)[1]),]
+  
+  delta = cbind(max,min)
+  Delta = rbind(Delta,delta)
+}
+write.table(Delta,"Delta_WP_LAI.csv", sep=",")
+
+
+
+
+#############################################
+setwd("D:\\ET\\Figures\\Basins_class3_LAI_WP\\Models")
+R <-read.table("R_LAI_ET_WY_Merge.csv",header=T, na.strings = "NA", sep=",")
+cv_lai <-read.table("cv_Lai.csv",header=T, na.strings = "NA", sep=",")
+cv_climate_index = read.table("cv_climate_index.csv",header=T, na.strings = "NA", sep=",")
+
+KP <-read.table("KP_Climate_Zone.csv",header=T, na.strings = "NA", sep=",")
+trend_Lai <-read.table("trend_Lai.csv",header=T, na.strings = "NA", sep=",")
+trend_WP = read.table("trend_WP.csv",header=T, na.strings = "NA", sep=",")
+
+all = merge(R,KP)
+all = merge(all,cv_lai)
+all = merge(all,cv_climate_index)
+all = merge(all,trend_Lai)
+all = merge(all,trend_WP)
+all = na.omit(all)
+
+all_lm = cor(all)
+
+
+ApplyQuintiles <- function(x) {
+  cut(x, breaks=c(quantile(all$AREA, probs = seq(0, 1, by = 0.25))), 
+      labels=c("D4","D3","D2","D1"), include.lowest=TRUE)
+}
+all$Area <- sapply(all$AREA, ApplyQuintiles)
+
+ggplot(all,aes(x = Area,y=WP_R))+
+  geom_boxplot(size = 0.5) + theme_classic()+
+  labs(x="Basins Area (4 Quantiles)", y = "r (LAI-WP)")+scale_fill_manual(values=c('#F68657','#75B19D'))+
+  theme(axis.text = element_text(face="plain",color="black", size=18),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="none")
+
+ApplyQuintiles <- function(x) {
+  cut(x, breaks=c(1,3,7,16,30), 
+      labels=c("E","A","T","S"), include.lowest=TRUE)
+}
+all$CZ <- sapply(all$Climate_zone, ApplyQuintiles)
+
+ggplot(all,aes(x =as.factor(CZ),y=WP_R))+
+  geom_boxplot(size = 0.5) + theme_classic()+
+  labs(x="Basins climate Zone", y = "r (LAI-WP)")+scale_fill_manual(values=c('#F68657','#75B19D'))+
+  theme(axis.text = element_text(face="plain",color="black", size=18),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="none")
+###########equation
+setwd("E:\\Budyko_w\\Data\\Analysis")
+budyko <-read.table("Budyko_w.csv",header=T, na.strings = "Na", sep=",")
+budyko = na.omit(budyko)
+budyko = budyko %>% filter(budyko$AET>0)
+
+f <- function(x,e,p,pet) {
+  e/p-(1+(pet/p)-(1+(pet/p)^x)^(1/x))
+}
+
+w = {}
+ID = {}
+for(i in 1:84){    
+ dt_sub= budyko[i,]   
+ res <- uniroot(f, interval = c(1, 5),extendInt = "yes", e=dt_sub$AET,p=dt_sub$P,pet=dt_sub$PET)$root
+ w = rbind(w,res)
+ ID = rbind(ID,dt_sub$ID)
+}
+budyko_w = cbind(ID,w)
+write.table(budyko_w,"budyko_w_calc.csv",row.names=F,sep=",")
+##############nanalysis
+setwd("E:\\Budyko_w\\Data\\Analysis")
+informa <-read.table("Basins_metedata_1.csv",header=T, na.strings = "Na", sep=",")
+budyko_w <-read.table("budyko_w_calc.csv",header=T, na.strings = "Na", sep=",")
+climate <-read.table("climate.csv",header=T, na.strings = "Na", sep=",")
+other <-read.table("Data_1.csv",header=T, na.strings = "Na", sep=",")
+Zone <-read.table("Zone.csv",header=T, na.strings = "Na", sep=",")
+colnames(other)[1] <- c("Name")
+climate = na.omit(climate)
+Zone$KP = as.factor(Zone$KP)
+Zone$Bio = as.factor(Zone$Bio)
+
+all1 = merge(budyko_w,climate)
+all2 = merge(all1,informa,by.x = "Name")
+all3 = merge(all2,other,by.x = "Name")
+all = merge(all3,Zone,by.x = "Name")
+all = all[,2:46]
+
+set.seed(123)
+library(randomForest)
+RF_first = randomForest(w ~ P+PET+DI+Temp+LAT+LONG+Area+Slope+srad+vpd+lai+
+                          Dem+awc_b0+sand_content_b0+soil_carbon_b10+sbd_b0+clay_b100+KP,ntree = 1000
+,data = all,importance = TRUE)
+imp = varImpPlot(RF_first)
+
+library(MASS)
+library(corrplot)
+M = cor(all)
+write.table(M,"correlation_Matrix.csv",row.names=F,sep=",")
+corrplot(M, method = 'number')
+# Fit the full model
+full.model <- lm(w ~ P+PET+DI+Temp+LAT+LONG+Area+Slope+srad+vpd+lai+
+                   Dem+awc_b0+sand_content_b0+soil_carbon_b10+sbd_b0+clay_b100+KP
+                 , data = all)
+summary(full.model)
+# Stepwise regression model
+step.model <- stepAIC(full.model, direction = "both", 
+                      trace = FALSE)
+summary(step.model)
+#################
+###############1 For CRU NC process
+library(ncdf4) # package for netcdf manipulation
+library(raster) # package for raster manipulation
+library(rgdal) # package for geospatial analysis
+library(ggplot2) # package for plotting
+setwd("E:\\Budyko_w\\Data\\NC\\GRUN")
+
+nc <- nc_open("GRUN_v1_GSWP3_WGS84_05_1902_2014.nc")
+attributes(nc)$names
+print(paste("The file has",nc$nvars,"variables,",nc$ndims,"dimensions and",nc$natts,"NetCDF attributes"))
+attributes(nc$var)$names
+t <- ncvar_get(nc, "time")
+
+r.array <- ncvar_get(nc, "Runoff") # store the data in a 3-dimensional array
+fillvalue <- ncatt_get(nc, "Runoff", "_FillValue")
+r.array[r.array == fillvalue$value] <- NA
+#############
+r_brick <- brick(r.array ,xmn=-90, xmx=90, ymn=-180, ymx=180,crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+
+# note that you may have to play around with the transpose (the t() function) and flip() before the data are oriented correctly. In this example, the netcdf file recorded latitude on the X and longitude on the Y, so both a transpose and a flip in the y direction were required.
+r_brick <- flip(t(r_brick), direction='y')
+dim(r_brick)
+plot(r_brick)
+num_years <- rep(1902:2014, each=12)
+s <- stackApply(r_brick, num_years, fun=mean)
+dim(s)
+plot(s)
+shp = readOGR("E:\\ET\\basins\\basin_4\\basin_4.shp")
+crs(shp)
+crs(s)
+
+runoff_mean <- extract(s,shp,fun=mean,na.rm=T)
+Id = shp$PFAF_ID
+runoff_m = cbind(Id,runoff_mean)
+write.table(spei,"Runoff_basins_4.csv",row.names=F,sep=",")
