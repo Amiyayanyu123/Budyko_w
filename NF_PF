@@ -1,0 +1,139 @@
+#drought
+setwd("F:\\Forest_Water\\NF_PF_Basins")
+dt1<-read.table("basins_7_all1.csv",header=T, na.strings = "Na", sep=",")
+dt2<-read.table("basins_7_all2.csv",header=T, na.strings = "Na", sep=",")
+dt3<-read.table("basins_7_xy.csv",header=T, na.strings = "Na", sep=",")
+dt4<-read.table("basins_7_DEM.csv",header=T, na.strings = "Na", sep=",")
+dt5<-read.table("Basins7_KP.csv",header=T, na.strings = "Na", sep=",")
+
+colnames(dt3) = c("PFAF_ID","x","y")
+data = merge(dt1,dt2)
+data = merge(data,dt3)
+data = merge(data,dt4)
+data_all = merge(data,dt5)
+
+data = na.omit(data_all)
+data = data %>% filter( data$WY_2010_2019 > 0 & data$WY_1995_2004 > 0 )
+data = data %>% filter( data$PF_ALL > 0.5)
+
+ApplyQuintiles1 <- function(x) {
+  cut(x, breaks=c(0,0.5,1,2,10), 
+      labels=c("1","2","3","4"), include.lowest=TRUE)
+}
+data$DI_Zone <- sapply(data$DI, ApplyQuintiles1)
+
+ApplyQuintiles2 <- function(x) {
+  cut(x, breaks=c(quantile(data$PF_ALL, probs = seq(0, 1, by = 0.25))),
+      labels=c("1","2","3","4"), include.lowest=TRUE)
+}
+data$class <- sapply(data$PF_ALL, ApplyQuintiles2)
+
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+CZ_Zone_mean = data %>%
+  group_by(class,DI_Zone) %>%
+  summarise(WY = mean(WY_2010_2019, na.rm = TRUE))
+
+CZ_Zone_se = data %>%
+  group_by(class,DI_Zone) %>%
+  summarise(WY = se(WY_2010_2019, na.rm = TRUE))
+
+
+colnames(CZ_Zone_mean) =c("Type","variable","mean")
+colnames(CZ_Zone_se) =c("Type","variable","se")
+stack= merge(CZ_Zone_mean,CZ_Zone_se)
+
+
+ggplot(data =stack,aes(x = variable,y=mean,fill = Type))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge())+ theme_classic()+
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(.9))+ labs(x="P/PET", y = "R/P")+
+  theme(axis.text = element_text(face="plain",color="black", size=20),
+        axis.title=element_text(size=22,face="bold",color="black") ,
+        legend.position="right")+
+  scale_fill_manual(values=c("#E2F0D9","#A9D18E","#548235","#385723"))
+
+data_1 = data %>% filter(data$DI_Zone == 1 )
+pairwise.wilcox.test(data_1$WY_2010_2019, data_1$class , p.adjust.method="none")
+
+data_2 = data %>% filter(data$DI_Zone == 2 )
+pairwise.wilcox.test(data_2$WY_2010_2019, data_1$class , p.adjust.method="none")
+
+data_3 = data %>% filter(data$DI_Zone == 3 )
+pairwise.wilcox.test(data_3$WY_2010_2019, data_1$class , p.adjust.method="none")
+
+data_4 = data %>% filter(data$DI_Zone == 4 )
+pairwise.wilcox.test(data_4$WY_2010_2019, data_1$class , p.adjust.method="none")
+
+#drought
+setwd("F:\\Forest_Water\\NF_PF_Basins")
+dt1<-read.table("basins_7_all1.csv",header=T, na.strings = "Na", sep=",")
+dt2<-read.table("basins_7_all2.csv",header=T, na.strings = "Na", sep=",")
+dt3<-read.table("basins_7_xy.csv",header=T, na.strings = "Na", sep=",")
+dt4<-read.table("basins_7_DEM.csv",header=T, na.strings = "Na", sep=",")
+dt5<-read.table("Basins7_KP.csv",header=T, na.strings = "Na", sep=",")
+
+colnames(dt3) = c("PFAF_ID","x","y")
+data = merge(dt1,dt2)
+data = merge(data,dt3)
+data = merge(data,dt4)
+data_all = merge(data,dt5)
+
+data = na.omit(data_all)
+data = data %>% filter( data$WY_2010_2019 > 0 & data$WY_1995_2004 > 0 )
+data = data %>% filter( data$NF_1 > 0.5)
+
+ApplyQuintiles1 <- function(x) {
+  cut(x, breaks=c(0,0.5,1,2,1000), 
+      labels=c("1","2","3","4"), include.lowest=TRUE)
+}
+data$DI_Zone <- sapply(data$DI, ApplyQuintiles1)
+
+ApplyQuintiles2 <- function(x) {
+  cut(x, breaks=c(quantile(data$NF_1, probs = seq(0, 1, by = 0.25))),
+      labels=c("1","2","3","4"), include.lowest=TRUE)
+}
+data$class <- sapply(data$NF_1, ApplyQuintiles2)
+
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+CZ_Zone_mean = data %>%
+  group_by(class,DI_Zone) %>%
+  summarise(WY = mean(WY_2010_2019, na.rm = TRUE))
+
+CZ_Zone_se = data %>%
+  group_by(class,DI_Zone) %>%
+  summarise(WY = se(WY_2010_2019, na.rm = TRUE))
+
+
+colnames(CZ_Zone_mean) =c("Type","variable","mean")
+colnames(CZ_Zone_se) =c("Type","variable","se")
+stack= merge(CZ_Zone_mean,CZ_Zone_se)
+
+
+ggplot(data =stack,aes(x = variable,y=mean,fill = Type))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge())+ theme_classic()+
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(.9))+ labs(x="P/PET", y = "R/P")+
+  theme(axis.text = element_text(face="plain",color="black", size=20),
+        axis.title=element_text(size=22,face="bold",color="black") ,
+        legend.position="right")+
+  scale_fill_manual(values=c("#E2F0D9","#A9D18E","#548235","#385723"))
+
+data_1 = data %>% filter(data$DI_Zone == 1 )
+pairwise.wilcox.test(data_1$WY_2010_2019, data_1$class , p.adjust.method="none")
+
+data_2 = data %>% filter(data$DI_Zone == 2 )
+pairwise.wilcox.test(data_2$WY_2010_2019, data_1$class , p.adjust.method="none")
+
+data_3 = data %>% filter(data$DI_Zone == 3 )
+pairwise.wilcox.test(data_3$WY_2010_2019, data_1$class , p.adjust.method="none")
+
+data_4 = data %>% filter(data$DI_Zone == 4 )
+pairwise.wilcox.test(data_4$WY_2010_2019, data_1$class , p.adjust.method="none")
