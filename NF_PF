@@ -137,3 +137,69 @@ pairwise.wilcox.test(data_3$WY_2010_2019, data_1$class , p.adjust.method="none")
 
 data_4 = data %>% filter(data$DI_Zone == 4 )
 pairwise.wilcox.test(data_4$WY_2010_2019, data_1$class , p.adjust.method="none")
+
+setwd("F:\\Forest_Water\\NF_PF_Basins")
+dt1<-read.table("basins_7_all1.csv",header=T, na.strings = "Na", sep=",")
+dt2<-read.table("basins_7_all2.csv",header=T, na.strings = "Na", sep=",")
+dt3<-read.table("basins_7_xy.csv",header=T, na.strings = "Na", sep=",")
+dt4<-read.table("basins_7_DEM.csv",header=T, na.strings = "Na", sep=",")
+dt5<-read.table("Basins7_KP.csv",header=T, na.strings = "Na", sep=",")
+
+colnames(dt3) = c("PFAF_ID","x","y")
+data = merge(dt1,dt2)
+data = merge(data,dt3)
+data = merge(data,dt4)
+data_all = merge(data,dt5)
+
+data = na.omit(data_all)
+data = data %>% filter( data$WY_2010_2019 > 0 & data$WY_1995_2004 > 0 )
+
+ApplyQuintiles1 <- function(x) {
+  cut(x, breaks=c(0,1,2,1000), 
+      labels=c("1","2","3"), include.lowest=TRUE)
+}
+data$DI_Zone <- sapply(data$DI, ApplyQuintiles1)
+
+
+PF_dataset_in = data %>% filter(  data$PF_ALL > 0.5  & data$Delta_2000_2015 > 0)
+PF_dataset_in = transform(PF_dataset_in, type = "PF_in")
+
+PF_dataset_de = data %>% filter(  data$PF_ALL > 0.5  & data$Delta_2000_2015 < -0)
+
+PF_dataset_de = transform(PF_dataset_de, type = "PF_de")
+
+NF_dataset_in = data %>% filter(  data$NF_1 > 0.5  & data$Delta_2000_2015 > 0)
+NF_dataset_in = transform(NF_dataset_in, type = "NF_in")
+
+NF_dataset_de = data %>% filter(  data$NF_1 > 0.5  & data$Delta_2000_2015 < -0)
+NF_dataset_de = transform(NF_dataset_de, type = "NF_de")
+
+dta <- qpcR:::rbind.na(PF_dataset_in,NF_dataset_in,PF_dataset_de,NF_dataset_de)
+
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+CZ_Zone_mean = dta %>%
+  group_by(type,DI_Zone) %>%
+  summarise(WY_change = mean(WY_change, na.rm = TRUE))
+
+CZ_Zone_se = dta %>%
+  group_by(type,DI_Zone) %>%
+  summarise(WY_change = se(WY_change, na.rm = TRUE))
+
+
+colnames(CZ_Zone_mean) =c("Type","variable","mean")
+colnames(CZ_Zone_se) =c("Type","variable","se")
+stack= merge(CZ_Zone_mean,CZ_Zone_se)
+
+
+ggplot(data =stack,aes(x = variable,y=mean,fill = Type))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge())+ theme_classic()+
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(.9))+ labs(x="P/PET", y = "R/P Change")+
+  theme(axis.text = element_text(face="plain",color="black", size=20),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="right")+
+  scale_fill_manual(values=c('#FFBE7A','#8ECFC9',"#FA7F6F","#82B0D2"))
