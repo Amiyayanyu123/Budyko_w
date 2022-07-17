@@ -17,38 +17,26 @@ library(lubridate)
 setwd("F:\\Fluxnet\\Datasets\\Datasets")
 data<-read_csv("FLX_AT-Neu_FLUXNET2015_FULLSET_HH_2002-2012_1-3.csv",na='-9999')
 
+yearly_data_extract = function (data){
 subdata_1 = data %>% dplyr::select(TIMESTAMP_START,NEE_VUT_REF, CO2_F_MDS,P_F,
      LE_F_MDS,VPD_F_MDS,TA_F_MDS,SWC_F_MDS_1) %>% 
   rename(time = TIMESTAMP_START,nee = NEE_VUT_REF, CO2 = CO2_F_MDS,
          LE = LE_F_MDS,VPD = VPD_F_MDS,Temp = TA_F_MDS,swc = SWC_F_MDS_1,Pre = P_F) %>% 
   mutate(date = parse_datetime(as.character(time), '%Y%m%d%H%M'))
 
-yearly_data_byna = subdata_1 %>%
+yearly_data_by_na = subdata_1 %>%
   mutate(Year = year(date)) %>%
   group_by(Year) %>%
   summarize(NA_CO2_ratio = sum(is.na(CO2))/48*365) %>%
   filter(NA_CO2_ratio <= 0.5) %>%
   dplyr::select(Year)
 
-year_list = yearly_data_byna$Year
-
-daytime_yearly = subdata_1 %>%
-    mutate(Hour = hour(date),Year = year(date)) %>%
-  dplyr:: filter(Year %in% year_list & nee > 0) %>%
- group_by(Year,Hour) %>%
-  dplyr:: filter(nee > 0) %>%
-    summarize(nee = mean(nee,na.rm = TRUE),
-              CO2 = mean(CO2,na.rm = TRUE),
-              LE = mean(LE,na.rm = TRUE),
-              VPD = mean(VPD,na.rm = TRUE),
-              Temp = mean(Temp,na.rm = TRUE),
-              swc = mean(swc,na.rm = TRUE),
-              Pre = mean(Pre,na.rm = TRUE))
-
-nighttime_yearly = subdata_1 %>%
+year_list = yearly_data_by_na$Year
+######################################### data
+yearly_data = subdata_1 %>%
   mutate(Hour = hour(date),Year = year(date)) %>%
-  dplyr:: filter(Year %in% year_list & nee < 0) %>%
-  group_by(Year,Hour) %>%
+    dplyr:: filter(Year %in% year_list) %>%
+  group_by(Year,Hour) %>% 
   summarize(nee = mean(nee,na.rm = TRUE),
             CO2 = mean(CO2,na.rm = TRUE),
             LE = mean(LE,na.rm = TRUE),
@@ -56,6 +44,55 @@ nighttime_yearly = subdata_1 %>%
             Temp = mean(Temp,na.rm = TRUE),
             swc = mean(swc,na.rm = TRUE),
             Pre = mean(Pre,na.rm = TRUE))
+
+night_yearly = yearly_data %>%
+  dplyr:: filter( nee < 0 ) %>%
+  group_by(Year) %>% 
+  summarize(d_nee = mean(nee,na.rm = TRUE),
+            d_CO2 = mean(CO2,na.rm = TRUE),
+            d_LE = mean(LE,na.rm = TRUE),
+            d_VPD = mean(VPD,na.rm = TRUE),
+            d_Temp = mean(Temp,na.rm = TRUE),
+            d_swc = mean(swc,na.rm = TRUE),
+            d_Pre = mean(Pre,na.rm = TRUE))
+
+day_yearly = yearly_data %>%
+  dplyr:: filter( nee > 0 ) %>%
+  group_by(Year) %>% 
+  summarize(n_nee = mean(nee,na.rm = TRUE),
+            n_CO2 = mean(CO2,na.rm = TRUE),
+            n_LE = mean(LE,na.rm = TRUE),
+            n_VPD = mean(VPD,na.rm = TRUE),
+            n_Temp = mean(Temp,na.rm = TRUE),
+            n_swc = mean(swc,na.rm = TRUE),
+            n_Pre = mean(Pre,na.rm = TRUE))
+
+
+######every data by nee to distinguish daytime and night
+# daytime_yearly = subdata_1 %>%
+#     mutate(Hour = hour(date),Year = year(date)) %>%
+#   dplyr:: filter(Year %in% year_list & nee > 0) %>%
+#  group_by(Year,Hour) %>%
+#   dplyr:: filter(nee > 0) %>%
+#     summarize(nee = mean(nee,na.rm = TRUE),
+#               CO2 = mean(CO2,na.rm = TRUE),
+#               LE = mean(LE,na.rm = TRUE),
+#               VPD = mean(VPD,na.rm = TRUE),
+#               Temp = mean(Temp,na.rm = TRUE),
+#               swc = mean(swc,na.rm = TRUE),
+#               Pre = mean(Pre,na.rm = TRUE))
+# 
+# nighttime_yearly = subdata_1 %>%
+#   mutate(Hour = hour(date),Year = year(date)) %>%
+#   dplyr:: filter(Year %in% year_list & nee < 0) %>%
+#   group_by(Year,Hour) %>%
+#   summarize(nee = mean(nee,na.rm = TRUE),
+#             CO2 = mean(CO2,na.rm = TRUE),
+#             LE = mean(LE,na.rm = TRUE),
+#             VPD = mean(VPD,na.rm = TRUE),
+#             Temp = mean(Temp,na.rm = TRUE),
+#             swc = mean(swc,na.rm = TRUE),
+#             Pre = mean(Pre,na.rm = TRUE))
 
 #################Rain-free day defined as three days after rain
 Rain_days = subdata_1 %>%
@@ -90,5 +127,10 @@ nighttime_et = cbind(subdata_1,Rain_free) %>%
 Rk = merge(daytime_et,nighttime_et) %>%
   mutate(Rk = night_et/rain_free_et)
 
+Final_data_1 = merge(day_yearly,night_yearly, by.x = "Year")
+Final_data = merge(Final_data_1,Rk, by.x = "Year")
 
-#######################################Bootstrapped Regression
+return(Final_data)
+}
+
+A = yearly_data_extract(data)
