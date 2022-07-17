@@ -1,0 +1,94 @@
+library(reshape2)
+library(tidyverse)
+library(bootstrap)
+library(QuantPsyc) 
+library(relaimpo)
+library(psych)
+library(ggplot2)
+library(nlme)
+library(ape)
+library(MuMIn)
+library(ggstatsplot)
+library(extrafont)
+library(extrafont)
+library(lubridate)
+
+
+setwd("F:\\Fluxnet\\Datasets\\Datasets")
+data<-read_csv("FLX_AT-Neu_FLUXNET2015_FULLSET_HH_2002-2012_1-3.csv",na='-9999')
+
+subdata_1 = data %>% dplyr::select(TIMESTAMP_START,NEE_VUT_REF, CO2_F_MDS,P_F,
+     LE_F_MDS,VPD_F_MDS,TA_F_MDS,SWC_F_MDS_1) %>% 
+  rename(time = TIMESTAMP_START,nee = NEE_VUT_REF, CO2 = CO2_F_MDS,
+         LE = LE_F_MDS,VPD = VPD_F_MDS,Temp = TA_F_MDS,swc = SWC_F_MDS_1,Pre = P_F) %>% 
+  mutate(date = parse_datetime(as.character(time), '%Y%m%d%H%M'))
+
+yearly_data_byna = subdata_1 %>%
+  mutate(Year = year(date)) %>%
+  group_by(Year) %>%
+  summarize(NA_CO2_ratio = sum(is.na(CO2))/48*365) %>%
+  filter(NA_CO2_ratio <= 0.5) %>%
+  dplyr::select(Year)
+
+year_list = yearly_data_byna$Year
+
+daytime_yearly = subdata_1 %>%
+    mutate(Hour = hour(date),Year = year(date)) %>%
+  dplyr:: filter(Year %in% year_list & nee > 0) %>%
+ group_by(Year,Hour) %>%
+  dplyr:: filter(nee > 0) %>%
+    summarize(nee = mean(nee,na.rm = TRUE),
+              CO2 = mean(CO2,na.rm = TRUE),
+              LE = mean(LE,na.rm = TRUE),
+              VPD = mean(VPD,na.rm = TRUE),
+              Temp = mean(Temp,na.rm = TRUE),
+              swc = mean(swc,na.rm = TRUE),
+              Pre = mean(Pre,na.rm = TRUE))
+
+nighttime_yearly = subdata_1 %>%
+  mutate(Hour = hour(date),Year = year(date)) %>%
+  dplyr:: filter(Year %in% year_list & nee < 0) %>%
+  group_by(Year,Hour) %>%
+  summarize(nee = mean(nee,na.rm = TRUE),
+            CO2 = mean(CO2,na.rm = TRUE),
+            LE = mean(LE,na.rm = TRUE),
+            VPD = mean(VPD,na.rm = TRUE),
+            Temp = mean(Temp,na.rm = TRUE),
+            swc = mean(swc,na.rm = TRUE),
+            Pre = mean(Pre,na.rm = TRUE))
+
+#################Rain-free day defined as three days after rain
+Rain_days = subdata_1 %>%
+  mutate(Rain = as.numeric(Pre > 0))
+
+Rain_days_vector = as.data.frame(Rain_days$Rain)
+Rain_days_lag3days = {}
+
+for (b in 1:144) {
+ lag_data = as.data.frame(dplyr::lag(all,b))
+ Rain_days_lag3days = qpcR:::cbind.na(Rain_days_lag3days,lag_data)
+  }
+  
+Rain_free  = as.data.frame(apply(qpcR:::cbind.na(Rain_days_lag3days,final), 1, sum, na.rm=T))
+colnames(Rain_free) = c("Rain_free")
+########################calculated Rk = Night ET/ rain-free Daytime ET
+
+daytime_et = cbind(subdata_1,Rain_free) %>%
+  mutate(Year = year(date))  %>%
+  dplyr:: filter(Year %in% year_list) %>%
+  dplyr:: filter(Rain_free > 0 & nee > 0) %>%
+  group_by(Year) %>%
+  summarize(rain_free_et = mean(LE,na.rm = TRUE))
+
+nighttime_et = cbind(subdata_1,Rain_free) %>%
+  mutate(Year = year(date))  %>%
+  dplyr:: filter(Year %in% year_list) %>%
+  dplyr:: filter(nee < 0) %>%
+  group_by(Year) %>%
+  summarize(night_et = mean(LE,na.rm = TRUE))
+
+Rk = merge(daytime_et,nighttime_et) %>%
+  mutate(Rk = night_et/rain_free_et)
+
+
+#######################################Bootstrapped Regression
