@@ -1,0 +1,217 @@
+setwd("F:\\Forest_Water\\Fishnet_NF_PF_compare\\analysis")
+data_1<-read.table("fishnet_2000_2015_basic_infor.csv",header=T, na.strings = "Na", sep=",")
+data_2<-read.table("fishnet_CE.csv",header=T, na.strings = "Na", sep=",")
+data_3<-read.table("fishnet_kp.csv",header=T, na.strings = "Na", sep=",")
+data_4<-read.table("fishnet_RET.csv",header=T, na.strings = "Na", sep=",")
+data_5<-read.table("fishnet_ET.csv",header=T, na.strings = "Na", sep=",")
+
+data = merge(data_1,data_2)
+data = merge(data,data_3)
+data = merge(data,data_4)
+data = merge(data,data_5)
+
+data$PF_CE = data$PF_CE*10
+data$NF_CE = data$NF_CE*10
+data$delta_dem = data$NF_DEM - data$PF_DEM
+data$delta_age = data$NF_Age - data$PF_Age
+data = data %>% filter(data$PF_cover_2000 > 0.2 & data$NF_cover_2000 >0.2
+                & data$delta_age > -5 & data$delta_age < 5
+                & data$delta_dem > -300 & data$delta_dem < 300)
+data$NF_DI = data$NF_CE/data$NF_RET
+data$PF_DI = data$PF_CE/data$PF_RET
+data$DI = (data$PF_CE+data$NF_CE)/(data$PF_RET+data$NF_RET)
+
+
+data$delta_CE = data$PF_CE - data$NF_CE
+data$delta_RET = data$PF_RET - data$NF_RET
+data$delta_ET = data$PF_ET - data$NF_ET
+#####
+data = data %>% filter(data$PF_RET < 1 & data$NF_RET < 1 &
+                         data$PF_CE < 1 & data$NF_CE < 1)
+
+ApplyQuintiles1 <- function(x) {
+  cut(x, breaks=c(0,1,2,1000), 
+      labels=c("1","2","3"), include.lowest=TRUE)
+}
+data$DI_Zone <- sapply(data$DI, ApplyQuintiles1)
+
+data = na.omit(data)
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+CZ_Zone_mean = data %>%
+  group_by(DI_Zone) %>%
+  summarise(CV = mean(delta_RET, na.rm = TRUE))
+
+CZ_Zone_se = data %>%
+  group_by(DI_Zone) %>%
+  summarise(CV = se(delta_RET, na.rm = TRUE))
+
+colnames(CZ_Zone_mean) =c("variable","mean")
+colnames(CZ_Zone_se) =c("variable","se")
+stack= merge(CZ_Zone_mean,CZ_Zone_se)
+stack = na.omit(stack)
+stack$variable = as.factor(stack$variable )
+
+ggplot(data =stack,aes(x = variable,y=mean,fill=variable))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge(),width=.7)+ theme_classic()+
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(.9))+ labs(x="P/PET", y = "Δ AET/P")+
+  theme(axis.text = element_text(face="plain",color="black", size=20),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="none")+ylim(0,0.02)+
+  scale_fill_discrete( h =c(0,260),l = 80, c = 80)
+
+data_1 = data %>% filter(data$DI_Zone == "1" )
+wilcox.test(data_1$delta_RET , p.adjust.method="none")
+
+data_2 = data %>% filter(data$DI_Zone == "2" )
+wilcox.test(data_2$delta_RET , p.adjust.method="none")
+
+data_3 = data %>% filter(data$DI_Zone == "3" )
+wilcox.test(data_3$delta_RET , p.adjust.method="none")
+#####################################################CE
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+CZ_Zone_mean = data %>%
+  group_by(DI_Zone) %>%
+  summarise(CV = mean(delta_CE, na.rm = TRUE))
+
+CZ_Zone_se = data %>%
+  group_by(DI_Zone) %>%
+  summarise(CV = se(delta_CE, na.rm = TRUE))
+
+colnames(CZ_Zone_mean) =c("variable","mean")
+colnames(CZ_Zone_se) =c("variable","se")
+stack= merge(CZ_Zone_mean,CZ_Zone_se)
+stack = na.omit(stack)
+stack$variable = as.factor(stack$variable )
+
+ggplot(data =stack,aes(x = variable,y=mean,fill=variable))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge(),width=.7)+ theme_classic()+
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(.9))+ labs(x="P/PET", y = "Δ AET/PET")+
+  theme(axis.text = element_text(face="plain",color="black", size=20),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="none")+
+  scale_fill_discrete( h =c(0,260),l = 80, c = 80)
+#####################################################ET
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+CZ_Zone_mean = data %>%
+  group_by(DI_Zone) %>%
+  summarise(CV = mean(delta_ET, na.rm = TRUE))
+
+CZ_Zone_se = data %>%
+  group_by(DI_Zone) %>%
+  summarise(CV = se(delta_ET, na.rm = TRUE))
+
+colnames(CZ_Zone_mean) =c("variable","mean")
+colnames(CZ_Zone_se) =c("variable","se")
+stack= merge(CZ_Zone_mean,CZ_Zone_se)
+stack = na.omit(stack)
+stack$variable = as.factor(stack$variable )
+
+ggplot(data =stack,aes(x = variable,y=mean,fill=variable))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge(),width=.7)+ theme_classic()+
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(.9))+ labs(x="P/PET", y = "Δ ET")+
+  theme(axis.text = element_text(face="plain",color="black", size=20),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="none")+
+  scale_fill_discrete( h =c(0,260),l = 80, c = 80)
+###################################
+ApplyQuintiles <- function(x) {
+  cut(x, breaks=c(1,3,7,16,30), 
+      labels=c("E","A","T","S"), include.lowest=TRUE)
+}
+data$Climate <- sapply(data$KP, ApplyQuintiles)
+data = na.omit(data)
+
+CZ_Zone_mean = data %>%
+  group_by(Climate) %>%
+  summarise(CV = mean(delta_CE, na.rm = TRUE))
+
+CZ_Zone_se = data %>%
+  group_by(Climate) %>%
+  summarise(CV = se(delta_CE, na.rm = TRUE))
+
+colnames(CZ_Zone_mean) =c("variable","mean")
+colnames(CZ_Zone_se) =c("variable","se")
+stack= merge(CZ_Zone_mean,CZ_Zone_se)
+stack = na.omit(stack)
+stack$variable = as.factor(stack$variable )
+
+ggplot(data =stack,aes(x = variable,y=mean,fill=variable))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge(),width=.7)+ theme_classic()+
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(.9))+ labs(x="P/PET", y = "Δ AET/PET")+
+  theme(axis.text = element_text(face="plain",color="black", size=20),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="none")+
+  scale_fill_discrete( h =c(0,260),l = 80, c = 80)
+#####################################################ET
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+CZ_Zone_mean = data %>%
+  group_by(Climate) %>%
+  summarise(CV = mean(delta_ET, na.rm = TRUE))
+
+CZ_Zone_se = data %>%
+  group_by(Climate) %>%
+  summarise(CV = se(delta_ET, na.rm = TRUE))
+
+colnames(CZ_Zone_mean) =c("variable","mean")
+colnames(CZ_Zone_se) =c("variable","se")
+stack= merge(CZ_Zone_mean,CZ_Zone_se)
+stack = na.omit(stack)
+stack$variable = as.factor(stack$variable )
+
+ggplot(data =stack,aes(x = variable,y=mean,fill=variable))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge(),width=.7)+ theme_classic()+
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(.9))+ labs(x="P/PET", y = "Δ ET")+
+  theme(axis.text = element_text(face="plain",color="black", size=20),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="none")+
+  scale_fill_discrete( h =c(0,260),l = 80, c = 80)
+################################
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+CZ_Zone_mean = data %>%
+  group_by(Climate) %>%
+  summarise(CV = mean(delta_RET, na.rm = TRUE))
+
+CZ_Zone_se = data %>%
+  group_by(Climate) %>%
+  summarise(CV = se(delta_RET, na.rm = TRUE))
+
+colnames(CZ_Zone_mean) =c("variable","mean")
+colnames(CZ_Zone_se) =c("variable","se")
+stack= merge(CZ_Zone_mean,CZ_Zone_se)
+stack = na.omit(stack)
+stack$variable = as.factor(stack$variable )
+
+ggplot(data =stack,aes(x = variable,y=mean,fill=variable))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge(),width=.7)+ theme_classic()+
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(.9))+ labs(x="P/PET", y = "Δ AET/P")+
+  theme(axis.text = element_text(face="plain",color="black", size=20),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="none")+
+  scale_fill_discrete( h =c(0,260),l = 80, c = 80)
+######################################
