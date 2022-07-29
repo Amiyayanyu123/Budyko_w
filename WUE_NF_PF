@@ -47,11 +47,11 @@ se <- function(x, na.rm=FALSE) {
 
 PF_mean = data_PF %>%
   group_by(PF_ALL_class,DI_Zone) %>%
-  summarise(WUE_mean = mean(WY_2010_2019, na.rm = TRUE))
+  summarise(WUE_mean = mean(WUE_MODIS, na.rm = TRUE))
 
 PF_se = data_PF %>%
   group_by(PF_ALL_class,DI_Zone) %>%
-  summarise(WUE_se = se(WY_2010_2019, na.rm = TRUE))
+  summarise(WUE_se = se(WUE_MODIS, na.rm = TRUE))
 
 colnames(PF_mean) =c("Type","variable","mean")
 colnames(PF_se) =c("Type","variable","se")
@@ -60,11 +60,11 @@ PF = transform(PF, catagory = "PF")
 ######
 NF_mean = data_NF %>%
   group_by(NF_ALL_class,DI_Zone) %>%
-  summarise(WUE_mean = mean(WY_2010_2019, na.rm = TRUE))
+  summarise(WUE_mean = mean(WUE_MODIS, na.rm = TRUE))
 
 NF_se = data_NF %>%
   group_by(NF_ALL_class,DI_Zone) %>%
-  summarise(WUE_se = se(WY_2010_2019, na.rm = TRUE))
+  summarise(WUE_se = se(WUE_MODIS, na.rm = TRUE))
 
 colnames(NF_mean) =c("Type","variable","mean")
 colnames(NF_se) =c("Type","variable","se")
@@ -76,8 +76,22 @@ all = rbind(PF,NF)
 ggplot(data =all,aes(x = Type,y=mean,fill = catagory))+
   geom_bar(stat = "identity",color = "black",position=position_dodge())+ 
   geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
-                position=position_dodge(1))+ labs(x="Forest Fraction", y = "R/P")+ theme_bw()+
+                position=position_dodge(1))+ labs(x="Forest Fraction", y = "WUE")+ theme_bw()+
   theme(axis.text.x = element_text(face="plain",color="black", size=14,angle=30),
         axis.text.y = element_text(face="plain",color="black", size=14),
         axis.title=element_text(size=18,face="bold",color="black") ,
         legend.position="right",strip.text = element_text(size=18)) + facet_wrap(~variable, ncol = 3)
+
+
+#####################
+Diff_PF_NF = PF_mean$mean - NF_mean$mean
+Diff = cbind(PF_mean[,1:2],Diff_PF_NF)
+colnames(Diff) = c("Type","variable","diff")
+
+ggplot(data =Diff,aes(x = variable,y= diff,fill = Type))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge())+ labs(x="P/PET", y = "WUE difference")+ theme_classic()+
+  theme(axis.text.x = element_text(face="plain",color="black", size=14),
+        axis.text.y = element_text(face="plain",color="black", size=14),
+        axis.title=element_text(size=18,face="bold",color="black") ,
+        legend.position="right",strip.text = element_text(size=18))+
+  scale_fill_manual(values=c("#E2F0D9","#A9D18E","#548235","#385723","#253917"))
