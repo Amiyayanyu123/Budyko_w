@@ -1,0 +1,83 @@
+setwd("F:\\Forest_Water\\NF_PF_Basins")
+dt1<-read.table("basins_7_all1.csv",header=T, na.strings = "Na", sep=",")
+dt2<-read.table("basins_7_all2.csv",header=T, na.strings = "Na", sep=",")
+dt3<-read.table("basins_7_xy.csv",header=T, na.strings = "Na", sep=",")
+dt4<-read.table("basins_7_DEM.csv",header=T, na.strings = "Na", sep=",")
+dt5<-read.table("Basins7_KP.csv",header=T, na.strings = "Na", sep=",")
+dt6<-read.table("AR6.csv",header=T, na.strings = "Na", sep=",")
+dt7<-read.table("WUE.csv",header=T, na.strings = "Na", sep=",")
+
+colnames(dt3) = c("PFAF_ID","x","y")
+data = merge(dt1,dt2)
+data = merge(data,dt3)
+data = merge(data,dt4)
+data = merge(data,dt5)
+data = merge(data,dt6)
+data_all = merge(data,dt7)
+
+
+data = na.omit(data_all)
+data = data %>% filter( data$WY_2010_2019 > 0 & data$WY_1995_2004 > 0 )
+data$WUE_MODIS = data$WUE_MODIS*1000
+data$Ratio_PF_F = data$PF_ALL/data$Forest_2015
+data$Ratio_NF_F = data$NF_1/data$Forest_2015
+
+ApplyQuintiles1 <- function(x) {
+  cut(x, breaks=c(0,1,2,1000), 
+      labels=c("1","2","3"), include.lowest=TRUE)
+}
+data$DI_Zone <- sapply(data$DI, ApplyQuintiles1)
+
+data_PF = data %>% filter( data$PF_ALL > 0.5 & data$Ratio_PF_F > 0.75 )
+
+data_NF = data %>% filter( data$NF_1 > 0.5 & data$Ratio_NF_F > 0.75 )
+
+ApplyQuintiles2 <- function(x) {
+  cut(x, breaks=c(0.5,0.6,0.7,0.8,0.9,1.0), 
+      labels=c("50~60","60~70","70~80","80~90","90~100"), include.lowest=TRUE)
+}
+
+data_PF$PF_ALL_class <- sapply(data_PF$PF_ALL, ApplyQuintiles2)
+data_NF$NF_ALL_class <- sapply(data_NF$NF_1, ApplyQuintiles2)
+
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+PF_mean = data_PF %>%
+  group_by(PF_ALL_class,DI_Zone) %>%
+  summarise(WUE_mean = mean(WY_2010_2019, na.rm = TRUE))
+
+PF_se = data_PF %>%
+  group_by(PF_ALL_class,DI_Zone) %>%
+  summarise(WUE_se = se(WY_2010_2019, na.rm = TRUE))
+
+colnames(PF_mean) =c("Type","variable","mean")
+colnames(PF_se) =c("Type","variable","se")
+PF= merge(PF_mean,PF_se)
+PF = transform(PF, catagory = "PF")
+######
+NF_mean = data_NF %>%
+  group_by(NF_ALL_class,DI_Zone) %>%
+  summarise(WUE_mean = mean(WY_2010_2019, na.rm = TRUE))
+
+NF_se = data_NF %>%
+  group_by(NF_ALL_class,DI_Zone) %>%
+  summarise(WUE_se = se(WY_2010_2019, na.rm = TRUE))
+
+colnames(NF_mean) =c("Type","variable","mean")
+colnames(NF_se) =c("Type","variable","se")
+NF= merge(NF_mean,NF_se)
+NF = transform(NF, catagory = "NF")
+#######
+all = rbind(PF,NF)
+
+ggplot(data =all,aes(x = Type,y=mean,fill = catagory))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge())+ 
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(1))+ labs(x="Forest Fraction", y = "R/P")+ theme_bw()+
+  theme(axis.text.x = element_text(face="plain",color="black", size=14,angle=30),
+        axis.text.y = element_text(face="plain",color="black", size=14),
+        axis.title=element_text(size=18,face="bold",color="black") ,
+        legend.position="right",strip.text = element_text(size=18)) + facet_wrap(~variable, ncol = 3)
