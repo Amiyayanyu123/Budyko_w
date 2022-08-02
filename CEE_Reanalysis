@@ -1,0 +1,250 @@
+library(reshape2)
+library(tidyverse)
+library(bootstrap)
+library(QuantPsyc)  #濮濄倕瀵樻稊鐔峰讲娴犮儴绶崙鐑樼垼閸戝棗瀵查惃鍕礀瑜版帞閮撮弫? lm.beta(lm_chap)
+library(relaimpo)
+library(psych)
+library(ggplot2)
+#remove spatial autocorrelation
+library(nlme)
+library(ape)
+library(MuMIn)
+library(ggstatsplot)
+library(extrafont)
+
+setwd("F:\\Forest_Water\\NF_PF_Basins")
+dt1<-read.table("basins_7_all1.csv",header=T, na.strings = "Na", sep=",")
+dt2<-read.table("basins_7_all2.csv",header=T, na.strings = "Na", sep=",")
+dt3<-read.table("basins_7_xy.csv",header=T, na.strings = "Na", sep=",")
+dt4<-read.table("basins_7_DEM.csv",header=T, na.strings = "Na", sep=",")
+dt5<-read.table("Basins7_KP.csv",header=T, na.strings = "Na", sep=",")
+dt6<-read.table("basins_7_Forest_m.csv",header=T, na.strings = "Na", sep=",")
+
+colnames(dt3) = c("PFAF_ID","x","y")
+data = merge(dt1,dt2)
+data = merge(data,dt3)
+data = merge(data,dt4)
+data = merge(data,dt5)
+data_all = merge(data,dt6)
+
+data = na.omit(data_all)
+data = data %>% filter( data$r.p > 0 & data$ET < data$PET)
+data = data %>% filter(data$PF_ALL > 0.5 | data$NF_1 > 0.5)
+
+data_sub = data %>% dplyr::select(PFAF_ID,PET,R,P)
+
+f <- function(x,r,p,pet) {
+  r/p+(p/pet)^(-1)-(1+(p/pet)^(-x))^(1/x)
+}
+
+w = {}
+ID = {}
+for(i in 1:8206){    
+  dt_sub= data_sub[i,]   
+  res <- uniroot(f, interval = c(0, 20),extendInt = "yes", r=dt_sub$R,p=dt_sub$P,pet=dt_sub$PET)$root
+  w = rbind(w,res)
+  ID = rbind(ID,dt_sub$PFAF_ID)
+}
+budyko_w = cbind(ID,w)
+budyko_w = as.data.frame(budyko_w)
+colnames(budyko_w) = c("PFAF_ID","m")
+#######################################
+data_sub_2 = merge(data_sub,budyko_w)
+data_sub_2 = data_sub_2 %>% filter( data_sub_2$m > 1)
+
+sensitivity <- function(r,p,pet,m) {
+  s = -((1+(p/pet)^(-m))^(1/m))*((1/m*m)*log(1+(p/pet)^(-m))+
+      (1/m)*((p/pet)^(-m))*((log(p/pet))/(1+(p/pet)^(-m))))
+return(s)
+  }
+
+
+res <- sensitivity(r=data_sub_2$R,p=data_sub_2$P,pet=data_sub_2$PET,m=data_sub_2$m)
+res_sen = cbind(data_sub_2$PFAF_ID,res)
+colnames(res_sen) = c("PFAF_ID","sen")
+
+data_sub_2 = merge(data_sub_2,res_sen)
+analysis = merge(data_sub_2,data)
+data = analysis
+#######################################
+ApplyQuintiles1 <- function(x) {
+  cut(x, breaks=c(0,1,2,1000), 
+      labels=c("1","2","3"), include.lowest=TRUE)
+}
+data$DI_Zone <- sapply(data$DI, ApplyQuintiles1)
+
+
+PF_dataset_in = data %>% filter(  data$PF_ALL > 0.5 & data$Delta_2000_2015 > 0.05 )
+PF_dataset_in = transform(PF_dataset_in, type = "PF_in")
+
+NF_dataset_in = data %>% filter(  data$NF_1 > 0.5  & data$Delta_2000_2015 > 0.05 )
+NF_dataset_in = transform(NF_dataset_in, type = "NF_in")
+
+dta <- qpcR:::rbind.na(PF_dataset_in,NF_dataset_in)
+dta %>% filter(dta$DI < 10)
+
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+CZ_Zone_mean = dta %>%
+  group_by(type,DI_Zone) %>%
+  summarise(WY_change = mean(m, na.rm = TRUE))
+
+CZ_Zone_se = dta %>%
+  group_by(type,DI_Zone) %>%
+  summarise(WY_change = se(m, na.rm = TRUE))
+
+
+colnames(CZ_Zone_mean) =c("Type","variable","mean")
+colnames(CZ_Zone_se) =c("Type","variable","se")
+stack= merge(CZ_Zone_mean,CZ_Zone_se)
+
+
+ggplot(data =stack,aes(x = variable,y=mean,fill = Type))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge())+ theme_classic()+
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(.9))+ labs(x="P/PET", y = "m")+
+  theme(axis.text = element_text(face="plain",color="black", size=20),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="none")
+ 
+####################################################################################################
+setwd("C:\\Users\\ADMIN\\Desktop\\Budyko")
+dt1<-read.table("yuzhen_data_reanalysis_2.csv",header=T, na.strings = "Na", sep=",")
+colnames(dt1) = c("ID","VT","FT","Treatment","Pre_DI","Post_DI","Post_WY","Pre_WY","DI","Change")
+
+data_all = na.omit(dt1)
+
+data = na.omit(data_all)
+data = data %>% filter( data$Pre_DI > 0 & data$Post_DI > 0 &
+                          data$Pre_WY > 0 & data$Post_WY > 0)
+
+data_sub = data %>% dplyr::select(ID,Pre_DI,Pre_WY)
+
+f <- function(x,WY,DI) {
+  WY+(DI)^(-1)-(1+(DI)^(-x))^(1/x)
+}
+
+w = {}
+ID = {}
+for(i in 1:381){    
+  dt_sub= data_sub[i,]   
+  res <- uniroot(f, interval = c(0, 20),extendInt = "yes", WY=dt_sub$Pre_WY,DI=dt_sub$Pre_DI)$root
+  w = rbind(w,res)
+  ID = rbind(ID,dt_sub$ID)
+}
+budyko_w_pre = cbind(ID,w)
+budyko_w_pre = as.data.frame(budyko_w_pre)
+colnames(budyko_w_pre) = c("ID","Pre_m")
+
+
+########################################
+data_sub_1 = data %>% dplyr::select(ID,Post_DI,Post_WY)
+
+f <- function(x,WY,DI) {
+  WY+(DI)^(-1)-(1+(DI)^(-x))^(1/x)
+}
+
+w_1 = {}
+ID_1 = {}
+for(i in 1:381){    
+  dt_sub= data_sub_1[i,]   
+  res <- uniroot(f, interval = c(0, 50),extendInt = "yes", WY=dt_sub$Post_WY,DI=dt_sub$Post_DI)$root
+  w_1 = rbind(w_1,res)
+  ID_1 = rbind(ID_1,dt_sub$ID)
+}
+budyko_w_post = cbind(ID_1,w_1)
+budyko_w_post = as.data.frame(budyko_w_post)
+colnames(budyko_w_post) = c("ID","Post_m")
+
+
+budyko_w = merge(budyko_w_pre,budyko_w_post)
+all = merge(data,budyko_w)
+
+all = all %>% filter(all$Pre_m > 1& all$Post_m > 1)
+all$DI = (all$Pre_DI+all$Post_DI)/2
+
+ApplyQuintiles1 <- function(x) {
+  cut(x, breaks=c(0,1,1000), 
+      labels=c("1","2"), include.lowest=TRUE)
+}
+all$DI_Zone <- sapply(all$DI, ApplyQuintiles1)
+
+sensitivity <- function(DI,m) {
+  s = -((1+(DI)^(-m))^(1/m))*((1/(m*m))*log(1+(DI)^(-m))+
+          (1/m)*((DI)^(-m))*((log(DI))/(1+(DI)^(-m))))
+  return(s)
+}
+
+
+res_Pre <- sensitivity(DI=all$Pre_DI,m=all$Pre_m)
+res_sen_Pre = cbind(all$ID,res_Pre)
+colnames(res_sen_Pre) = c("ID","Pre_sen")
+all = merge(all,res_sen_Pre)
+
+res_Post <- sensitivity(DI=all$Post_DI,m=all$Post_m)
+res_sen_Post = cbind(all$ID,res_Post)
+colnames(res_sen_Post) = c("ID","Post_sen")
+all = merge(all,res_sen_Post)
+all$sen_change = all$Post_sen - all$Pre_sen
+
+ApplyQuintiles1 <- function(x) {
+  cut(x, breaks=c(0,1,1000), 
+      labels=c("1","2"), include.lowest=TRUE)
+}
+all$Pre_DI_Zone <- sapply(all$Pre_DI, ApplyQuintiles1)
+
+all$Post_DI_Zone <- sapply(all$Post_DI, ApplyQuintiles1)
+
+CZ_Zone_mean = all %>%
+  group_by(FT,Pre_DI_Zone,Treatment) %>%
+  summarise(Pre_mean = mean(Pre_sen, na.rm = TRUE))
+
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+CZ_Zone_se = all %>%
+  group_by(FT,Pre_DI_Zone,Treatment) %>%
+  summarise(Pre_se = se(Pre_sen, na.rm = TRUE))
+
+
+colnames(CZ_Zone_mean) =c("Type","DI_Zone","Treatment","mean")
+colnames(CZ_Zone_se) =c("Type","DI_Zone","Treatment","se")
+stack_pre= merge(CZ_Zone_mean,CZ_Zone_se)
+stack_pre = transform(stack_pre,state = "Pre")
+
+CZ_Zone_mean = all %>%
+  group_by(FT,Post_DI_Zone,Treatment) %>%
+  summarise(Post_mean = mean(Post_sen, na.rm = TRUE)
+  )
+
+se <- function(x, na.rm=FALSE) {
+  if (na.rm) x <- na.omit(x)
+  sqrt(var(x)/length(x))
+}
+
+CZ_Zone_se = all %>%
+  group_by(FT,Post_DI_Zone,Treatment) %>%
+  summarise(Post_se = se(Post_sen, na.rm = TRUE))
+
+
+colnames(CZ_Zone_mean) =c("Type","DI_Zone","Treatment","mean")
+colnames(CZ_Zone_se) =c("Type","DI_Zone","Treatment","se")
+stack_post= merge(CZ_Zone_mean,CZ_Zone_se)
+stack_post = transform(stack_post,state = "Post")
+
+stack = rbind(stack_pre,stack_post) 
+stack_1 = stack %>%
+  filter(Treatment == "INCREASE" | Treatment == "DECREASE")
+
+ggplot(data =stack_1,aes(x = DI_Zone,y=mean,fill = Type))+
+  geom_bar(stat = "identity",color = "black",position=position_dodge())+ theme_bw()+
+  geom_errorbar(aes(ymin=mean-2*se, ymax=mean+2*se), width=.2,
+                position=position_dodge(.9))+ labs(x="P/PET", y = "sensitivity")+
+  theme(axis.text = element_text(face="plain",color="black", size=20),
+        axis.title=element_text(size=20,face="bold",color="black") ,
+        legend.position="right",strip.text = element_text(size=18))+ facet_wrap(~state+Treatment, ncol = 2)
