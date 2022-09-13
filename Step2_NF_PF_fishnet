@@ -1,0 +1,354 @@
+//Climate Variables
+var yyKey = ee.List.sequence(1982, 2019).map(function(i){return ee.String(ee.Number(i).int())});
+var yyVal = ee.List.sequence(1982, 2019);
+var yyDic = ee.Dictionary.fromLists(yyKey, yyVal);
+var mmDic = ee.Dictionary({'01':1,'02':2,'03':3,'04':4,'05':5,'06':6,'07':7,'08':8,'09':9,'10':10,'11':11,'12':12});
+function readAsset(image){
+  var id = image.id().split("_");
+  var yy = ee.Number(yyDic.get(id.get(1)));
+  var mm = ee.Number(mmDic.get(id.get(2)));
+  var date = ee.Date.fromYMD({day:1, month:mm, year:yy}).millis();
+  return image.divide(100).rename('SynthesizedET').setMulti({'mm':mm, 'yy':yy, 'system:time_start':date}); }
+
+var SynthesizedET = ee.ImageCollection('users/Elnashar/SynthesizedET').map(readAsset);
+var start_year = 1995;  
+var end_year = 2019;  
+var yearList = ee.List.sequence(start_year, end_year);  
+var yearImgList = yearList.map(function(year) {  
+  var time = ee.Date.fromYMD(year, 1, 1) 
+  var median = SynthesizedET.filterDate(time,time.advance(+1,'year')).mean()
+  return median.set("year", year) 
+            .set('system:time_start', ee.Date.fromYMD(year, 1, 1).millis())
+});  
+var et_climate_yearly = ee.ImageCollection.fromImages(yearImgList)
+//////////////Pre
+var Pre = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").select(["pr"])
+var start_year = 1995;   
+var end_year = 2019;   
+var yearList = ee.List.sequence(start_year, end_year);  
+var yearImgList = yearList.map(function(year) {  
+  var time = ee.Date.fromYMD(year, 1, 1) 
+  var sum = Pre.filterDate(time,time.advance(+1,'year')).mean()
+  return sum.set("year", year) 
+            .set('system:time_start', ee.Date.fromYMD(year, 1, 1).millis())
+});  
+var pre_yearly = ee.ImageCollection.fromImages(yearImgList).select("pr")
+//////////////Pre
+var GPP = ee.ImageCollection("MODIS/006/MOD17A2H").select("Gpp")
+var start_year = 2001;   
+var end_year = 2020;   
+var yearList = ee.List.sequence(start_year, end_year);  
+var yearImgList = yearList.map(function(year) {  
+  var time = ee.Date.fromYMD(year, 1, 1) 
+  var sum = GPP.filterDate(time,time.advance(+1,'year')).mean().multiply(0.0001)
+  return sum.set("year", year) 
+            .set('system:time_start', ee.Date.fromYMD(year, 1, 1).millis())
+});  
+var GPP_yearly = ee.ImageCollection.fromImages(yearImgList)
+print(GPP_yearly)
+////////////////////////////////Forest 
+////////////////////////////////Forest 
+//PF NF 2000 2021 by hassen
+var forest_2000 = ee.Image("UMD/hansen/global_forest_change_2021_v1_9").select("treecover2000")
+//resample
+var gridScale = forest_2015.projection().nominalScale();
+gridScale = gridScale.multiply(gridScale); 
+var classifiedScale = forest_2000.projection().nominalScale();
+classifiedScale = classifiedScale.multiply(classifiedScale);
+var pixNum = ee.Number(gridScale.divide(classifiedScale)).int();
+print(gridScale,classifiedScale,pixNum)
+print(forest_2015.projection())
+
+var forest_2000 = forest_2000.reproject(forest_2015.projection()).reduceResolution({
+  reducer: ee.Reducer.mean(),
+  maxPixels: pixNum,
+  bestEffort: true,
+}).gt(50).rename("Forest_2000");
+
+//Forest_change
+var forest_2015_all = forest_2015.eq(11).or(forest_2015.eq(20))
+.or(forest_2015.eq(31)).or(forest_2015.eq(32)).or(forest_2015.eq(40)).or(forest_2015.eq(53)).rename("Forest_2015")
+//
+var planted_forest_2015 = forest_2015.eq(31).or(forest_2015.eq(32)).or(forest_2015.eq(40)).or(forest_2015.eq(53)).rename("PF_2015")
+var planted_forest_2000 = forest_2000.subtract(planted_forest_2015).eq(0).updateMask(forest_2000).rename("PF_2000")
+
+var natural_forest_2015 = forest_2015.eq(11).or(forest_2015.eq(20)).rename("NF_2015")
+var NF_2000 =  forest_2000.subtract(natural_forest_2015).eq(0).updateMask(forest_2000).rename("NF_2000")
+
+////////////////////////////////////////
+
+var ET_2000_2015 = et_climate_yearly.filterDate("2000-01-01","2015-12-31").mean().rename("ET_2000_2015")
+
+var PF_ET = ET_2000_2015.updateMask(planted_forest_2000).rename("PF_ET")
+
+var NF_ET = ET_2000_2015.updateMask(NF_2000).rename("NF_ET")
+
+
+var GPP_2000_2015 = ee.ImageCollection("MODIS/006/MOD17A2H").filterDate("2000-01-01","2015-12-31").select("Gpp").mean().rename("GPP_2000_2015")
+
+var PF_GPP = GPP_2000_2015.updateMask(planted_forest_2000).rename("PF_GPP")
+
+var NF_GPP = GPP_2000_2015.updateMask(NF_2000).rename("NF_GPP")
+
+
+var WUE_2000_2015 = GPP_2000_2015.divide(ET_2000_2015).rename("WUE")
+
+var PF_WUE = WUE_2000_2015.updateMask(planted_forest_2000).rename("PF_WUE")
+
+var NF_WUE = WUE_2000_2015.updateMask(NF_2000).rename("NF_WUE")
+  
+/////
+var Pre_2000_2015 = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").filterDate("2000-01-01","2015-12-31").select("pr").mean().rename("Pre")
+
+var PF_Pre = Pre_2000_2015.updateMask(planted_forest_2000).rename("PF_Pre")
+
+var NF_Pre = Pre_2000_2015.updateMask(NF_2000).rename("NF_Pre")
+//
+var PET_2000_2015 = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").filterDate("2000-01-01","2015-12-31").select("pet").mean().multiply(0.1).rename("PET")
+
+var PF_PET = PET_2000_2015.updateMask(planted_forest_2000).rename("PF_PET")
+
+var NF_PET = PET_2000_2015.updateMask(NF_2000).rename("NF_PET")
+//
+Export.image.toDrive({
+ image:PF_WUE,
+  description: 'PF_WUE',
+  scale: 1000,
+   maxPixels: 1e13
+});
+
+Export.image.toDrive({
+ image:NF_WUE,
+  description: 'NF_WUE',
+  scale: 1000,
+   maxPixels: 1e13
+});
+/////////////////////////////////////////
+
+
+
+
+
+
+///////////////////////////////////////////////////////////Water Sensitivity
+var NDVI_all = ee.ImageCollection("MODIS/006/MOD13Q1").select("NDVI");
+var start_year = 2001;  
+var end_year = 2015;  
+var yearList = ee.List.sequence(start_year, end_year);  
+var yearImgList = yearList.map(function(year) {  
+  year = ee.Number(year);  
+  var time = NDVI_all.filter(ee.Filter.calendarRange(year, year, "year"))
+  var img = time.max().multiply(0.0001); 
+  var img = img.sqrt().tanh()
+  img = img.set("year", year);  
+  img = img.set("system:index", ee.String(year.toInt()))
+            .set('system:time_start', ee.Date.fromYMD(year, 1, 1).millis())
+  return img;  
+});  
+var NDVI = ee.ImageCollection.fromImages(yearImgList);
+
+/////
+var SPEI_all = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").select('pr')
+var start_year = 2001;  
+var end_year = 2015;  
+var yearList = ee.List.sequence(start_year, end_year);  
+var yearImgList = yearList.map(function(year) {  
+  year = ee.Number(year);  
+  var time = SPEI_all.filter(ee.Filter.calendarRange(year, year, "year"))
+  var img = time.mean()  
+  img = img.set("year", year);  
+  img = img.set("system:index", ee.String(year.toInt()))
+            .set('system:time_start', ee.Date.fromYMD(year, 1, 1).millis())
+  return img;  
+});  
+var Climate = ee.ImageCollection.fromImages(yearImgList);
+////
+var filtereq = ee.Filter.equals({
+  leftField: 'system:time_start',
+  rightField: 'system:time_start',
+});
+var join = ee.Join.saveFirst({
+    matchKey: 'match',
+});
+var Climate_NDVI = ee.ImageCollection(join.apply(NDVI,Climate,filtereq))
+  .map(function(image) {
+    return image.addBands(image.get('match'));
+  });
+
+print(Climate_NDVI)
+
+///////////////////////////
+var linearRegression = Climate_NDVI.select(["pr","NDVI"]).reduce(
+  ee.Reducer.linearRegression({
+    numX: 1,
+    numY: 1
+}));
+
+var bandNames = [['pr'], // 0-axis variation.
+                 ['NDVI']]; // 1-axis variation.
+
+var ndvi_pdsi_Sensitivity = linearRegression.select(['coefficients']).arrayFlatten(bandNames);
+print(ndvi_pdsi_Sensitivity)
+
+//
+var corr=function(joined_collection,band1,band2){
+  var coll=ee.ImageCollection(joined_collection);
+  var corr_img=coll.select([band1, band2])
+  .reduce(ee.Reducer.pearsonsCorrelation());
+  var te=corr_img.select('p-value');
+  var test=te;
+  return test;
+  
+};
+
+ var r_NDVI_pr = corr(Climate_NDVI ,'pr','NDVI').lte(0.1)
+
+var PF_Slope_yealy = ndvi_pdsi_Sensitivity.updateMask(r_NDVI_pr).updateMask(planted_forest_2000).rename("PF_Slope_yealy")
+
+var NF_Slope_yealy = ndvi_pdsi_Sensitivity.updateMask(r_NDVI_pr).updateMask(NF_2000).rename("NF_Slope_yealy")
+
+Map.addLayer(PF_Slope_yealy)
+
+Export.image.toDrive({
+ image:PF_Slope_yealy,
+  description: 'PF_Slope_kndvi_pr_yealy_p',
+  scale: 1000,
+   maxPixels: 1e13
+});
+
+Export.image.toDrive({
+ image:NF_Slope_yealy,
+  description: 'NF_Slope_kndvi_pr_yealy_p',
+  scale: 1000,
+   maxPixels: 1e13
+});
+////////////////////////////////////////////or detrend
+///////////////////////////////////////////////////////////Water Sensitivity
+var NDVI_all = ee.ImageCollection("MODIS/006/MOD13Q1").select("NDVI");
+var start_year = 2001;  
+var end_year = 2015;  
+var yearList = ee.List.sequence(start_year, end_year);  
+var yearImgList = yearList.map(function(year) {  
+  year = ee.Number(year);  
+  var time = NDVI_all.filter(ee.Filter.calendarRange(year, year, "year"))
+  var img = time.max().multiply(0.0001); 
+  var img = img.sqrt().tanh().addBands(ee.Image(year).rename('t'))
+    .float().addBands(ee.Image.constant(1))
+  img = img.set("year", year);  
+  img = img.set("system:index", ee.String(year.toInt()))
+            .set('system:time_start', ee.Date.fromYMD(year, 1, 1).millis())
+  return img;  
+});  
+var NDVI = ee.ImageCollection.fromImages(yearImgList);
+
+/////
+var SPEI_all = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").select('pr')
+var start_year = 2001;  
+var end_year = 2015;  
+var yearList = ee.List.sequence(start_year, end_year);  
+var yearImgList = yearList.map(function(year) {  
+  year = ee.Number(year);  
+  var time = SPEI_all.filter(ee.Filter.calendarRange(year, year, "year"))
+  var img = time.mean().addBands(ee.Image(year).rename('t'))
+    .float().addBands(ee.Image.constant(1))  
+  img = img.set("year", year);  
+  img = img.set("system:index", ee.String(year.toInt()))
+            .set('system:time_start', ee.Date.fromYMD(year, 1, 1).millis())
+  return img;  
+});  
+var Climate = ee.ImageCollection.fromImages(yearImgList);
+print(Climate)
+///////////////////////////////
+// List of the independent variable names
+var independents = ee.List(['constant', 't']);
+
+// Name of the dependent variable.
+var dependent = ee.String('NDVI');
+
+// Compute a linear trend.  This will have two bands: 'residuals' and 
+// a 2x1 band called coefficients (columns are for dependent variables).
+var trend = NDVI.select(independents.add(dependent))
+    .reduce(ee.Reducer.linearRegression(independents.length(), 1));
+// Map.addLayer(trend, {}, 'trend array image');
+
+// Flatten the coefficients into a 2-band image
+var coefficients = trend.select('coefficients')
+  .arrayProject([0])
+  .arrayFlatten([independents]);
+// Compute a de-trended series.
+var detrended_NDVI = NDVI.map(function(image) {
+  return image.select(dependent).subtract(
+          image.select(independents).multiply(coefficients).reduce('sum'))
+          .rename(dependent)
+          .copyProperties(image,['system:time_start','system:time_end'])
+});
+///
+// List of the independent variable names
+var independents = ee.List(['constant', 't']);
+
+// Name of the dependent variable.
+var dependent = ee.String('pr');
+
+// Compute a linear trend.  This will have two bands: 'residuals' and 
+// a 2x1 band called coefficients (columns are for dependent variables).
+var trend = Climate.select(independents.add(dependent))
+    .reduce(ee.Reducer.linearRegression(independents.length(), 1));
+// Map.addLayer(trend, {}, 'trend array image');
+
+// Flatten the coefficients into a 2-band image
+var coefficients = trend.select('coefficients')
+  .arrayProject([0])
+  .arrayFlatten([independents]);
+// Compute a de-trended series.
+var detrended_pr = Climate.map(function(image) {
+  return image.select(dependent).subtract(
+          image.select(independents).multiply(coefficients).reduce('sum'))
+          .rename(dependent)
+          .copyProperties(image,['system:time_start','system:time_end'])
+});
+////
+var filtereq = ee.Filter.equals({
+  leftField: 'system:time_start',
+  rightField: 'system:time_start',
+});
+var join = ee.Join.saveFirst({
+    matchKey: 'match',
+});
+var Climate_NDVI = ee.ImageCollection(join.apply(detrended_NDVI,detrended_pr,filtereq))
+  .map(function(image) {
+    return image.addBands(image.get('match'));
+  });
+
+print(Climate_NDVI)
+///////////////////////////
+var linearRegression = Climate_NDVI.select(["pr","NDVI"]).reduce(
+  ee.Reducer.linearRegression({
+    numX: 1,
+    numY: 1
+}));
+
+var bandNames = [['pr'], // 0-axis variation.
+                 ['NDVI']]; // 1-axis variation.
+
+var ndvi_pdsi_Sensitivity = linearRegression.select(['coefficients']).arrayFlatten(bandNames);
+print(ndvi_pdsi_Sensitivity)
+
+var PF_Slope_yealy = ndvi_pdsi_Sensitivity.updateMask(planted_forest_2000).rename("PF_Slope_yealy")
+
+var NF_Slope_yealy = ndvi_pdsi_Sensitivity.updateMask(NF_2000).rename("NF_Slope_yealy")
+
+Map.addLayer(PF_Slope_yealy)
+
+Export.image.toDrive({
+ image:PF_Slope_yealy,
+  description: 'PF_Slope_kndvi_pr_yealy_detrend',
+  scale: 1000,
+   maxPixels: 1e13
+});
+
+Export.image.toDrive({
+ image:NF_Slope_yealy,
+  description: 'NF_Slope_kndvi_pr_yealy_detrend',
+  scale: 1000,
+   maxPixels: 1e13
+});
