@@ -1,0 +1,136 @@
+basins = ee.FeatureCollection("WWF/HydroSHEDS/v1/Basins/hybas_7");
+/////////////////Forest change by GFCC 
+var tcc_2000 = ee.ImageCollection("NASA/MEASURES/GFCC/TC/v3").select("tree_canopy_cover")
+.filterDate("2000-01-01","2000-12-31").mean().rename("GFCC_2000")
+
+var tcc_2015 = ee.ImageCollection("NASA/MEASURES/GFCC/TC/v3").select("tree_canopy_cover")
+.filterDate("2015-01-01","2015-12-31").mean().rename("GFCC_2015")
+
+var delta_2015_2000_tcc = tcc_2015.subtract(tcc_2000).rename("Delta_2000_2015")
+//Forest
+var Forest_2015 = forest_2015.eq(11).or(forest_2015.eq(20))
+.or(forest_2015.eq(31)).or(forest_2015.eq(32)).or(forest_2015.eq(40)).or(forest_2015.eq(53)).rename("Forest_2015_SR")
+
+var Forest_Type_2015 = forest_2015.updateMask(Forest_2015).rename("2015_forest_type")
+
+//PF NF 2000 2015 by hassen
+var forest_2000 = ee.Image("UMD/hansen/global_forest_change_2021_v1_9").select("treecover2000")
+//resample
+var gridScale = forest_2015.projection().nominalScale();
+gridScale = gridScale.multiply(gridScale); 
+var classifiedScale = forest_2000.projection().nominalScale();
+classifiedScale = classifiedScale.multiply(classifiedScale);
+var pixNum = ee.Number(gridScale.divide(classifiedScale)).int();
+print(gridScale,classifiedScale,pixNum)
+print(forest_2015.projection())
+
+var forest_2000 = forest_2000.gt(50).reproject(forest_2015.projection()).reduceResolution({
+  reducer: ee.Reducer.mode(),
+  maxPixels: pixNum,
+  bestEffort: true,
+}).rename("Forest_2000");
+//Forest_change
+var forest_2015_all = forest_2015.eq(11).or(forest_2015.eq(20))
+.or(forest_2015.eq(31)).or(forest_2015.eq(32)).or(forest_2015.eq(40)).or(forest_2015.eq(53)).rename("Forest_2015")
+//
+var planted_forest_2015 = forest_2015.eq(31).or(forest_2015.eq(32)).or(forest_2015.eq(40)).or(forest_2015.eq(53)).rename("PF_2015")
+var planted_forest_2000 = forest_2000.subtract(planted_forest_2015).eq(0).updateMask(forest_2000).rename("PF_2000")
+
+var all = forest_2015_all.addBands(forest_2000).addBands(planted_forest_2015).addBands(planted_forest_2000)
+
+//////////////////////////////////////////////Climate Data 
+//global basins NDVI Change impact on runoff and evaporation 1981-2022years
+var basins = ee.FeatureCollection("WWF/HydroSHEDS/v1/Basins/hybas_7");
+var yyKey = ee.List.sequence(1982, 2019).map(function(i){return ee.String(ee.Number(i).int())});
+var yyVal = ee.List.sequence(1982, 2019);
+var yyDic = ee.Dictionary.fromLists(yyKey, yyVal);
+var mmDic = ee.Dictionary({'01':1,'02':2,'03':3,'04':4,'05':5,'06':6,'07':7,'08':8,'09':9,'10':10,'11':11,'12':12});
+function readAsset(image){
+  var id = image.id().split("_");
+  var yy = ee.Number(yyDic.get(id.get(1)));
+  var mm = ee.Number(mmDic.get(id.get(2)));
+  var date = ee.Date.fromYMD({day:1, month:mm, year:yy}).millis();
+  return image.divide(100).rename('SynthesizedET').setMulti({'mm':mm, 'yy':yy, 'system:time_start':date}); }
+
+var SynthesizedET = ee.ImageCollection('users/Elnashar/SynthesizedET').map(readAsset);
+var start_year = 1995;  
+var end_year = 2019;  
+var yearList = ee.List.sequence(start_year, end_year);  
+var yearImgList = yearList.map(function(year) {  
+  var time = ee.Date.fromYMD(year, 1, 1) 
+  var median = SynthesizedET.filterDate(time,time.advance(+1,'year')).mean()
+  return median.set("year", year) 
+            .set('system:time_start', ee.Date.fromYMD(year, 1, 1).millis())
+});  
+var et_climate_yearly = ee.ImageCollection.fromImages(yearImgList)
+//////////////Pre
+var Pre = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").select(["pr","pet"])
+var start_year = 1995;   
+var end_year = 2019;   
+var yearList = ee.List.sequence(start_year, end_year);  
+var yearImgList = yearList.map(function(year) {  
+  var time = ee.Date.fromYMD(year, 1, 1) 
+  var sum = Pre.filterDate(time,time.advance(+1,'year')).mean()
+  return sum.set("year", year) 
+            .set('system:time_start', ee.Date.fromYMD(year, 1, 1).millis())
+});  
+var pre_yearly = ee.ImageCollection.fromImages(yearImgList).select("pr")
+var pet_yearly = ee.ImageCollection.fromImages(yearImgList).select("pet")
+print(pre_yearly)
+///////////////////////////////////////////////////////water yield basins
+////////
+
+var forest_WY = delta_2015_2000_tcc.addBands(Forest_2015).addBands(planted_forest_2015).addBands(forest_2000).addBands(planted_forest_2000)
+
+var Pre_1995_2004 = pre_yearly.filterDate("1995-01-01","2004-12-31").mean().rename("Pre_1995_2004").updateMask(forest_2000)
+var ET_1995_2004 = et_climate_yearly.filterDate("1995-01-01","2004-12-31").mean().rename("ET_1995_2004").updateMask(forest_2000)
+var PET_1995_2004 = pet_yearly.filterDate("1995-01-01","2004-12-31").mean().rename("PET_1995_2004").updateMask(forest_2000)
+
+var Pre_2010_2019 = pre_yearly.filterDate("2010-01-01","2019-12-31").mean().rename("Pre_2010_2019").updateMask(Forest_2015)
+var ET_2010_2019 = et_climate_yearly.filterDate("2010-01-01","2019-12-31").mean().rename("ET_2010_2019").updateMask(Forest_2015)
+var PET_1995_2004 = pet_yearly.filterDate("2010-01-01","2019-12-31").mean().rename("PET_2010_2019").updateMask(Forest_2015)
+
+var climate_WY = Pre_1995_2004.addBands(ET_1995_2004).addBands(PET_1995_2004).addBands(Pre_2010_2019).addBands(ET_2010_2019)
+.addBands(PET_1995_2004)
+
+var all = forest_WY.addBands(climate_WY)
+
+var statistics = ee.Image(all)
+.reduceRegions({collection: basins, reducer: ee.Reducer.mean(), scale: 1000})
+
+var polyOut = statistics.select(['.*'],null,false);
+
+Export.table.toDrive({
+  collection:polyOut,
+  description:'basins_7_Forest_WY',
+  fileFormat: 'csv'
+});
+
+///////DI
+
+var dataset = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE')
+                  .filter(ee.Filter.date('1995-01-01', '2004-12-31'));
+var pet = dataset.select('pet').mean().multiply(0.1);
+var pre = dataset.select('pr').mean();
+
+var DI_1995_2004 = pre.divide(pet).rename("DI_1995_2004")
+
+var dataset = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE')
+                  .filter(ee.Filter.date('2009-01-01', '2019-12-31'));
+var pet = dataset.select('pet').mean().multiply(0.1);
+var pre = dataset.select('pr').mean();
+
+var DI_2009_2019 = pre.divide(pet).rename("DI_2009_2019")
+
+var DI = DI_1995_2004.addBands(DI_2009_2019)
+
+var statistics = DI
+.reduceRegions({collection: basins, reducer: ee.Reducer.mean(), scale: 1000})
+
+var polyOut = statistics.select(['.*'],null,false);
+
+Export.table.toDrive({
+  collection:polyOut,
+  description:'basins_7_DI',
+  fileFormat: 'csv'
+});
